@@ -1,0 +1,51 @@
+ ### cat /tmp/randdisk
+#!/bin/bash
+fail=1;
+test -e "$1" && fail=0;
+if [ $fail -eq 1 ] ;then echo "FILE DOES NOT EXIST , ABORT" ;exit 235;fi
+
+
+blockdev --getsize64 $1 &>/dev/null && size=$(sudo blockdev --getsize64 "$1" ) || size=$(wc -c < "$1")
+
+if [ $size -eq 0 ];then echo "SIZE 0 after detection , maybe sparse file or something worse , ABORT";exit 235;fi
+
+lowest=$size
+highest=0
+echo "I WILL DESTROY $1 ( "$(expr $size / 1024 / 1024 / 1024  )" Gbytes == "$(expr $size / 1024 / 1024)" Mbytes ), ARE YOU SURE ? (y/n)"
+read yesno
+if [ "$yesno" == "y" ];then
+
+echo "WIPING INITIAL 8 MB"
+openssl enc -aes-256-ctr -pass pass:"$(dd if=/dev/urandom bs=128 count=1 2>/dev/null | base64)" -iter 3 -nosalt < /dev/zero 2>/dev/null | head -c 8388608| pv -pr -s 8388608 -S > $1
+
+bytes=0;
+
+smallmodulo=8589934592 # 8Gbytes
+if [ $size -lt $smallmodulo ];then smallmodulo=$(expr $size / 5 );fi  # if disk is smaller than 8G we take the  first 20% , e.g. 800MB for 4Gbytes , usually enough for MBR/GPT
+
+while (true); do
+#    which openssl >/dev/zero  && randnum=$(openssl enc -aes-256-ctr -pass pass:"$(dd if=/dev/urandom bs=128 count=1 2>/dev/null | base64)" -iter 3 -nosalt < /dev/zero 2>/dev/null | tr -cd '0-9' |head -c 13) || >
+#    smallrand=$randnum
+
+    smallrand=${RANDOM}${RANDOM};
+    #overwrite lower area more intense
+    number=$((10#$smallrand%10#$smallmodulo))
+    if [ $number -lt $lowest ];then lowest=$number;fi;if [ $number -gt $highest ];then highest=$number;fi
+    cat /dev/urandom |tr -cd '[[:alnum:]'|head -c1|dd of=$1 skip=$number count=2 &>/dev/null &
+    smallrand=$number
+    let bytes++;
+
+    which openssl >/dev/zero  && randnum=$(openssl enc -aes-256-ctr -pass pass:"$(dd if=/dev/urandom bs=128 count=1 2>/dev/null | base64)" -iter 3 -nosalt < /dev/zero 2>/dev/null | tr -cd '0-9' |head -c 13) || r>
+    number=$((10#$randnum%10#$size))
+    if [ $number -lt $lowest ];then lowest=$number;fi;if [ $number -gt $highest ];then highest=$number;fi
+    dd if=/dev/urandom of=$1 skip=$number count=2 &>/dev/null &
+    let bytes++;
+    ( echo -en "\r\t  ↓↓ low: "$lowest" ↓↓  begin: "$smallrand"    wholedisk: "$number"   ↑↑  high: "$highest" of $size bytes ↑↑          wiped : $bytes bytes            \r ";sleep 0.01; ) &
+
+done
+
+else
+
+echo user abort
+
+fi
