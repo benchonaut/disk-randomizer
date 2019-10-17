@@ -1,4 +1,3 @@
- ### cat /tmp/randdisk
 #!/bin/bash
 fail=1;
 test -e "$1" && fail=0;
